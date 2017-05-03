@@ -19,7 +19,8 @@ namespace WGestures.Common.OsSpecific.Windows
 {
     public static class Native
     {
-        public delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
+        public delegate IntPtr LowLevelMouseHookProc(int nCode, IntPtr wParam, IntPtr lParam);
+        public delegate int LowLevelkeyboardHookProc(int code, int wParam, ref keyboardHookStruct lParam);
         public const int WH_MOUSE_LL = 14;
         public const int WH_KEYBOARD_LL = 13;
 
@@ -28,7 +29,7 @@ namespace WGestures.Common.OsSpecific.Windows
         /// </summary>
         /// <param name="proc"></param>
         /// <returns></returns>
-        public static IntPtr SetMouseHook(LowLevelMouseProc proc)
+        public static IntPtr SetMouseHook(LowLevelMouseHookProc proc)
         {
             using (var curProcess = Process.GetCurrentProcess())
             using (var curModule = curProcess.MainModule)
@@ -36,6 +37,46 @@ namespace WGestures.Common.OsSpecific.Windows
                 return SetWindowsHookEx(WH_MOUSE_LL, proc, 
                     GetModuleHandle(curModule.ModuleName), 0);
             }
+        }
+
+        public static IntPtr SetKeyboardHook(LowLevelkeyboardHookProc proc)
+        {
+            using (var curProcess = Process.GetCurrentProcess())
+            using (var curModule = curProcess.MainModule)
+            {
+                return SetWindowsHookEx(WH_KEYBOARD_LL, proc,
+                    GetModuleHandle(curModule.ModuleName), 0);
+            }
+        }
+
+        
+
+        public struct keyboardHookStruct
+        {
+            public int vkCode;
+            public int scanCode;
+            public int flags;
+            public int time;
+            public int dwExtraInfo;
+        }
+
+        public static Color GetWindowColorization()
+        {
+            try
+            {
+                var argbColor = (int)Microsoft.Win32.Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\DWM",
+                "ColorizationColor", 0);
+                return Color.FromArgb(argbColor);
+
+            }
+            catch (Exception e)
+            {
+                Debug.WriteLine("WindowsUtil.GetWindowColorization: " + e);
+                return Color.FromArgb(120, 0,0,0);
+            }
+
+
+
         }
 
         [DllImport("user32.dll")]
@@ -253,31 +294,20 @@ namespace WGestures.Common.OsSpecific.Windows
 
         public static string GetProcessFile(uint proc)
         {
-            /*using (var p = Process.GetProcessById((int) proc))
-            {
-                return p.MainModule.FileName;
-            }*/
-
-            int pathLength = 256;
+            const int pathLength = 256;
             var procFullName = new StringBuilder(pathLength);
 
             var hProc = OpenProcess(Native.ProcessAccessFlags.QueryInformation | ProcessAccessFlags.VMRead, false, proc);
            // QueryFullProcessImageNameW(hProc, 0, procFullName, ref pathLength);
             if (GetModuleFileNameEx(hProc, IntPtr.Zero, procFullName, (uint) pathLength) == 0)
             {
+                CloseHandle(hProc);
+#if DEBUG
                 throw new Exception("GetModuleFileNameEx Failed:"+GetLastError());
+#endif
+                return null;
             }
             CloseHandle(hProc);
-            
-            
-            //toLower
-//            for(int i=0; i<procFullName.Length; i++)
-//            {
-//                if (Char.IsUpper(procFullName[i]))
-//                {
-//                    procFullName[i] = Char.ToLower(procFullName[i]);
-//                }
-//            }
             
             return procFullName.ToString();
         }
@@ -376,7 +406,7 @@ namespace WGestures.Common.OsSpecific.Windows
                 dummyWnd.CreateHandle(new CreateParams(){ExStyle = (int) (User32.WS_EX.WS_EX_LAYERED | User32.WS_EX.WS_EX_TOOLWINDOW)});
                 User32.ShowWindow(dummyWnd.Handle, User32.SW.SW_SHOWNORMAL);
 
-                var sim = new InputSimulator();
+                var sim = new InputSimulator() { ExtraInfo = new IntPtr(19900620) };
                 sim.Keyboard.Sleep(10);
 
                 foreach (var keys in allKeys)
@@ -762,7 +792,7 @@ namespace WGestures.Common.OsSpecific.Windows
             VK_OEM_CLEAR = 0xFE
         }
 
-        #region Window
+#region Window
         [DllImport("user32.dll", ExactSpelling = true, SetLastError = true)]
         public static extern Bool UpdateLayeredWindow(IntPtr hwnd, IntPtr hdcDst, ref Point pptDst, ref Size psize, IntPtr hdcSrc, ref Point pprSrc, Int32 crKey, ref BLENDFUNCTION pblend, Int32 dwFlags);
 
@@ -771,9 +801,13 @@ namespace WGestures.Common.OsSpecific.Windows
 
         [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
         public static extern IntPtr SetWindowsHookEx(int idHook,
-            LowLevelMouseProc lpfn, 
+            LowLevelMouseHookProc lpfn, 
             IntPtr hMod,
             uint dwThreadId);
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr SetWindowsHookEx(int idHook, LowLevelkeyboardHookProc callback, IntPtr hInstance, uint threadId);
+
 
         [DllImport("user32.dll")]
         public static extern IntPtr GetForegroundWindow();
@@ -813,9 +847,9 @@ namespace WGestures.Common.OsSpecific.Windows
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool PeekMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin,
            uint wMsgFilterMax, uint wRemoveMsg);
-        #endregion
+#endregion
 
-        #region Hooking
+#region Hooking
         [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool UnhookWindowsHookEx(IntPtr hhk);
@@ -824,6 +858,8 @@ namespace WGestures.Common.OsSpecific.Windows
         public static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode,
             IntPtr wParam, IntPtr lParam);
 
+        [DllImport("user32.dll")]
+        public static extern int CallNextHookEx(IntPtr idHook, int nCode, int wParam, ref keyboardHookStruct lParam);
         #endregion
 
         #region GDI
@@ -854,7 +890,7 @@ namespace WGestures.Common.OsSpecific.Windows
 
         [DllImport("gdi32.dll", ExactSpelling = true, SetLastError = true)]
         public static extern Bool DeleteObject(IntPtr hObject);
-        #endregion
+#endregion
 
 
         [DllImport("psapi.dll")]

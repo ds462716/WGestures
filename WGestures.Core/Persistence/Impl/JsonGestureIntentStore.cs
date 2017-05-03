@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using Newtonsoft.Json;
+using WGestures.Core.Commands;
 
 //using Newtonsoft.Json;
 
@@ -16,6 +17,7 @@ namespace WGestures.Core.Persistence.Impl
         public string FileVersion { get; set; }
         public Dictionary<string, ExeApp> Apps { get; set; }
         public GlobalApp GlobalApp { get; set; }
+        public AbstractCommand[] HotCornerCommands{get;set;} //4 corners + 4 edges
 
         private string jsonPath;
         private JsonSerializer ser = new JsonSerializer();
@@ -27,8 +29,7 @@ namespace WGestures.Core.Persistence.Impl
             FileVersion = fileVersion;
             this.jsonPath = jsonPath;
             SetupSerializer();
-
-
+            
             if (File.Exists(jsonPath))
             {
                 Deserialize();
@@ -37,6 +38,7 @@ namespace WGestures.Core.Persistence.Impl
             {
                 Apps = new Dictionary<string, ExeApp>();
                 GlobalApp = new GlobalApp();
+                HotCornerCommands = new AbstractCommand[8]; //4 corners + 4 edges
             }
         }
 
@@ -55,7 +57,7 @@ namespace WGestures.Core.Persistence.Impl
                 using (var txtReader = new StreamReader(stream))
                 using (var jsonReader = new JsonTextReader(txtReader))
                 {
-                    var ser = new JsonSerializer();
+                    /*var ser = new JsonSerializer();
                     ser.Formatting = Formatting.None;
                     ser.TypeNameHandling = TypeNameHandling.Auto;
 
@@ -64,11 +66,11 @@ namespace WGestures.Core.Persistence.Impl
                         ser.Converters.Add(new GestureIntentConverter_V1());
 
                     }
-                    else if (FileVersion.Equals("2"))
+                    else// if (FileVersion.Equals("2"))
                     {
                         ser.Converters.Add(new GestureIntentConverter());
 
-                    }
+                    }*/
                     var result = ser.Deserialize<SerializeWrapper>(jsonReader);
 
                     FileVersion = result.FileVersion;
@@ -84,7 +86,34 @@ namespace WGestures.Core.Persistence.Impl
                         Apps.Add(a.ExecutablePath, a);
                     }
 
+                    //convert old version GestureButton Value ( 0->1, 1->2)
+                    if(FileVersion == "1" || FileVersion == "2")
+                    {
+                        var globalIntents = GlobalApp.GestureIntents.Values.ToArray();
+                        GlobalApp.GestureIntents.Clear();
 
+                        foreach(var gestIntent in globalIntents)
+                        {
+                            gestIntent.Gesture.GestureButton += 1;
+                            GlobalApp.GestureIntents.Add(gestIntent);
+                        }
+
+                        foreach(var app in Apps.Values)
+                        {
+                            var intents = app.GestureIntents.Values.ToArray();
+                            app.GestureIntents.Clear();
+                     
+                            foreach (var gestIntent in intents)
+                            {
+                                gestIntent.Gesture.GestureButton += 1;
+                                app.GestureIntents.Add(gestIntent);
+                            }
+                        }
+                    }
+
+                    HotCornerCommands = new AbstractCommand[8];
+                    Array.Copy(result.HotCornerCommands, HotCornerCommands, result.HotCornerCommands.Length);
+                    //HotCornerCommands = result.HotCornerCommands;
                 }
             }
             finally
@@ -126,7 +155,7 @@ namespace WGestures.Core.Persistence.Impl
                 using (var writer = new JsonTextWriter(fs))
                 {
                  
-                    ser.Serialize(writer,new SerializeWrapper(){Apps = Apps, FileVersion = FileVersion, Global = GlobalApp});
+                    ser.Serialize(writer,new SerializeWrapper(){Apps = Apps, FileVersion = FileVersion, Global = GlobalApp, HotCornerCommands = HotCornerCommands});
                 }
             }
 
@@ -159,7 +188,7 @@ namespace WGestures.Core.Persistence.Impl
 
         private void Deserialize()
         {
-            using (var file = new FileStream(jsonPath, FileMode.Open))
+            using (var file = new FileStream(jsonPath, FileMode.Open, FileAccess.Read))
             {
                 Deserialize(file, false);
             }
@@ -175,7 +204,7 @@ namespace WGestures.Core.Persistence.Impl
             {
                 ser.Converters.Add(new GestureIntentConverter_V1());
 
-            }else if (FileVersion.Equals("2"))
+            }else //if (FileVersion.Equals("2"))
             {
                 ser.Converters.Add(new GestureIntentConverter());
 
@@ -218,12 +247,13 @@ namespace WGestures.Core.Persistence.Impl
 
         public JsonGestureIntentStore Clone()
         {
+            //fixme: dummy impl
             var ret = new JsonGestureIntentStore();
             ret.GlobalApp = GlobalApp;
             ret.Apps = Apps;
             ret.FileVersion = FileVersion;
             ret.jsonPath = jsonPath;
-
+            ret.HotCornerCommands = HotCornerCommands;
             return ret;
         }
 
@@ -236,8 +266,18 @@ namespace WGestures.Core.Persistence.Impl
                 GlobalApp.GestureIntents.Clear();
                 GlobalApp.IsGesturingEnabled = from.GlobalApp.IsGesturingEnabled;
                 Apps.Clear();
+                HotCornerCommands = from.HotCornerCommands;
+            }else
+            {
+                for(var i=0; i<from.HotCornerCommands.Length; i++)
+                {
+                    if(from.HotCornerCommands[i] != null)
+                    {
+                        HotCornerCommands[i] = from.HotCornerCommands[i];
+                    }
+                }
             }
-
+            
             GlobalApp.ImportGestures(from.GlobalApp);
             
             foreach (var kv in from.Apps)
@@ -268,15 +308,10 @@ namespace WGestures.Core.Persistence.Impl
 
         internal class SerializeWrapper
         {
-            //[JsonProperty("FileVersion")]
             public string FileVersion { get; set; }
-
-            //[JsonProperty("Apps")]
             public Dictionary<string, ExeApp> Apps { get; set; }
-            
-            //[JsonProperty("Global")]
             public GlobalApp Global { get; set; }
-
+            public AbstractCommand[] HotCornerCommands { get; set; } = new AbstractCommand[8];
         }
 
         internal class GestureIntentConverter : JsonConverter

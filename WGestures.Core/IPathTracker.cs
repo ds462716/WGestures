@@ -7,7 +7,7 @@ namespace WGestures.Core
     public class PathEventArgs : EventArgs
     {
         public Point Location{get; set;}
-        public GestureButtons Button;
+        public GestureTriggerButton Button;
         public GestureModifier Modifier { get; set; }
         public GestureContext Context { get; set; }
 
@@ -37,10 +37,6 @@ namespace WGestures.Core
         }
     }
 
-    public enum ScreenCorner
-    {
-        LeftBottom, LeftTop, RightTop, RightBottom
-    }
 
     public delegate void PathTrackEventHandler(PathEventArgs args);
 
@@ -64,6 +60,8 @@ namespace WGestures.Core
         event PathTrackEventHandler PathTimeout;
         event PathTrackEventHandler PathModifier;
 
+        //TODO: 按照接口隔离原则重构
         event Action<ScreenCorner> HotCornerTriggered;
+        event Action<ScreenEdge> EdgeRubbed;
     }
 }

@@ -27,6 +27,8 @@ namespace WGestures.App
         public const string GestureViewMainPathColor = "GestureViewMainPathColor";
         public const string GestureViewMiddleBtnMainColor = "GestureViewMiddleBtnMainColor";
         public const string GestureViewAlternativePathColor = "GestureViewAlternativePathColor";
+        public const string GestureViewXBtnPathColor = "GestureViewXBtnPathColor";
+
 
         public const string IsFirstRun = "IsFirstRun";
         public const string Is360EverDected = "Is360EverDected";
@@ -36,5 +38,9 @@ namespace WGestures.App
         public const string GestureParserEnableHotCorners = "GestureParserEnableHotCorners";
         public const string GestureParserEnable8DirGesture = "GestureParserEnable8DirGesture";
 
+        public const string GestureParserEnableRubEdges = "GestureParserEnableRubEdges";
+
+        public const string PauseResumeHotKey = "PauseResumeHotKey";
+        public const string EnableWindowsKeyGesturing = "EnableWindowsKeyGesturing";
     }
 }

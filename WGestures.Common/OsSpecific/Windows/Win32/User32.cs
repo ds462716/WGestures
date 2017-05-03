@@ -39,7 +39,10 @@ namespace Win32
 
         [DllImport(User32Dll, SetLastError = true)]
         public extern static bool UnregisterClass(string lpClassName, IntPtr hInstance);
-//
+
+        [DllImport(User32Dll)]
+        public extern static int GetScrollPos(IntPtr hWnd, int nBar);
+        //
         [DllImport(User32Dll)]
         public extern static IntPtr DefWindowProc(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam);
 //
@@ -75,13 +78,20 @@ namespace Win32
 
         [DllImport(User32Dll)]
         public static extern IntPtr DispatchMessage([In] ref MSG lpmsg);
-//
-//        [DllImport(User32Dll)]
-//        public static extern IntPtr BeginPaint(IntPtr hwnd, out GDI32.PAINTSTRUCT lpPaint);
-//
-//        [DllImport(User32Dll)]
-//        public static extern IntPtr EndPaint(IntPtr hwnd, out GDI32.PAINTSTRUCT lpPaint);
-//
+        //
+        //        [DllImport(User32Dll)]
+        //        public static extern IntPtr BeginPaint(IntPtr hwnd, out GDI32.PAINTSTRUCT lpPaint);
+        //
+        //        [DllImport(User32Dll)]
+        //        public static extern IntPtr EndPaint(IntPtr hwnd, out GDI32.PAINTSTRUCT lpPaint);
+        //
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        public static extern bool RegisterHotKey(IntPtr hWnd, int id, int fsModifiers, int vk);
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        public static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
+
+
         [DllImport("user32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool SystemParametersInfo(uint uiAction, uint uiParam, ref uint pvParam, SPIF fWinIni); // T = any type
@@ -711,6 +721,9 @@ namespace Win32
 
         [DllImport(User32Dll)]
         public static extern IntPtr SetFocus(IntPtr hWnd);
+
+        [DllImport(User32Dll)]
+        public static extern IntPtr GetFocus();
 
         [DllImport(User32Dll, SetLastError = true)]
         public static extern IntPtr GetDesktopWindow();

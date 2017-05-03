@@ -14,7 +14,6 @@ namespace WGestures.Core
     //todo:重构事件发布
     public class GestureParser : IDisposable
     {
-
         #region delegate types
         public delegate void GestureIntentEventHandler(GestureIntent intent);
         public delegate void IntentExecutedEventHandler(GestureIntent intent, GestureIntent.ExecutionResult result);
@@ -47,10 +46,9 @@ namespace WGestures.Core
             }
         }
 
-        public bool EnableHotCorners { get; set; }
-        public bool Enable8DirGesture { get; set; }
-
-        //public bool DisableInFullScreenMode { get; set; }
+        public bool EnableHotCorners { get; set; } = true;
+        public bool Enable8DirGesture { get; set; } = false;
+        public bool EnableRubEdge { get; set; } = true;
 
         public int MaxGestureSteps { get; set; }
         public bool IsPaused { get { return _isPaused; } }
@@ -58,15 +56,14 @@ namespace WGestures.Core
         public IPathTracker PathTracker { get; private set; }
         public IGestureIntentFinder IntentFinder { get; private set; }
         #endregion
-
-
+        
         private Dictionary<Action<Gesture>, SynchronizationContext> _gestureCapturedEventHandlerContexts = new Dictionary<Action<Gesture>, SynchronizationContext>();
 
         #region Events
         public event GestureIntentEventHandler IntentRecognized;
         public event IntentExecutedEventHandler IntentExecuted;
         public event GestureIntentEventHandler IntentReadyToExecute;
-        public event Action IntentInvalid;
+        public event Action<Gesture> IntentInvalid;
         public event Action IntentOrPathCanceled;
         public event Action<GestureModifier> IntentReadyToExecuteOnModifier;
         public event Action<string,GestureIntent> CommandReportStatus;
@@ -115,9 +112,8 @@ namespace WGestures.Core
             PathTracker.EffectivePathGrow += PathTrackerOnEffectivePathGrow;
             PathTracker.PathModifier += PathTrackerOnPathModifier;
             PathTracker.HotCornerTriggered += PathTracker_HotCornerTriggered;
+            PathTracker.EdgeRubbed += PathTracker_EdgeRubbed;
         }
-
-
 
         public virtual void Start()
         {
@@ -139,6 +135,12 @@ namespace WGestures.Core
             _isPaused = false;
 
             OnStateChanged(State.RUNNING);
+        }
+
+        public void TogglePause()
+        {
+            if (IsPaused) Resume();
+            else Pause();
         }
 
         public virtual void Stop()
@@ -282,7 +284,7 @@ namespace WGestures.Core
             }
             else if (lastEffectiveIntent != null)
             {
-                if (IntentInvalid != null) IntentInvalid();
+                if (IntentInvalid != null) IntentInvalid(_gesture);
             }
 
             Debug.WriteLine("Gesture:" + _gesture);
@@ -378,6 +380,12 @@ namespace WGestures.Core
                     //todo: 这个逻辑似乎应该放在GestureIntent中
                     if (modifierStateAwareCommand != null)
                     {
+                        var shouldInit = modifierStateAwareCommand as INeedInit;
+                        if (shouldInit != null && !shouldInit.IsInitialized)
+                        {
+                            shouldInit.Init();
+                        }
+
                         modifierStateAwareCommand.ReportStatus += OnCommandReportStatus;
                         GestureModifier observedModifiers;
                         modifierStateAwareCommand.GestureRecognized(out observedModifiers);
@@ -398,40 +406,49 @@ namespace WGestures.Core
             }
             else if (lastEffectiveIntent != null)
             {
-                if (IntentInvalid != null) IntentInvalid();
+                if (IntentInvalid != null) IntentInvalid(_gesture);
             }
 
         }
 
-
-        //FIXME: MUST REFACTOR
+        
         void PathTracker_HotCornerTriggered(ScreenCorner corner)
         {
             if (!EnableHotCorners) return;
             Debug.WriteLine("HotCorner: " + corner);
-            switch (corner)
+
+            var cmd = IntentFinder.IntentStore.HotCornerCommands[(int)corner];
+            if(cmd != null)
             {
-                case ScreenCorner.RightBottom:
-                    Sim.KeyDown(VirtualKeyCode.LWIN);
-                    Sim.KeyDown(VirtualKeyCode.VK_D);
-                    Sim.KeyUp(VirtualKeyCode.VK_D);
-                    Sim.KeyUp(VirtualKeyCode.LWIN);
-                    break;
-                case ScreenCorner.RightTop:
-                    Sim.KeyDown(VirtualKeyCode.LMENU);
-                    Sim.KeyDown(VirtualKeyCode.TAB);
-                    Thread.Sleep(100);
-                    Sim.KeyUp(VirtualKeyCode.TAB);
-                    Sim.KeyUp(VirtualKeyCode.LMENU);
-                    break;
-                case ScreenCorner.LeftTop:
-                    Sim.KeyPress(VirtualKeyCode.CANCEL);
-                    break;
-                case ScreenCorner.LeftBottom:
-                    Sim.KeyPress(VirtualKeyCode.LWIN);
-                    break;
+                var shouldInit = cmd as INeedInit;
+                if (shouldInit != null && !shouldInit.IsInitialized)
+                {
+                    shouldInit.Init();
+                }
+                cmd.Execute();
             }
         }
+
+        private void PathTracker_EdgeRubbed(ScreenEdge edge)
+        {
+            if (!EnableRubEdge) return;
+            Debug.WriteLine("RubEdge: " + edge);
+
+            //HACK: 似乎有必要重构此实现方式
+            // corners & edges 的command 依次存放在一个8元素数组中。
+            // 4 + edge == 实际对应的cmd
+            var cmd = IntentFinder.IntentStore.HotCornerCommands[4 + (int)edge];
+            if (cmd != null)
+            {
+                var shouldInit = cmd as INeedInit;
+                if (shouldInit != null && !shouldInit.IsInitialized)
+                {
+                    shouldInit.Init();
+                }
+                cmd.Execute();
+            }
+        }
+
         #endregion
 
         #region Event Publishing

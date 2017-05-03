@@ -60,13 +60,16 @@ namespace WGestures.App.Gui.Windows
             //if (_intent != null)
             {
                 var found = _app.Find(gesture);
-                
-                if (found != null)
+
+                if (found != null && (found != _intent))
                 {
                     lb_errMsg.Text = "相同手势(" + found.Name + ")已存在，点击‘保存’会将其替代";
+                    flowAlert.Visible = true;
                 }
-
-                flowAlert.Visible = (found != _intent);
+                else
+                {
+                    flowAlert.Visible = false;
+                }
             }
                             
             lb_mnemonic.Text = gesture.ToString();
@@ -138,5 +141,31 @@ namespace WGestures.App.Gui.Windows
             return base.ProcessCmdKey(ref msg, keyData);
         }
 
+        private void tb_gestureName_TextChanged(object sender, EventArgs e)
+        {
+            var isNameValid = (tb_gestureName.Text.Length > 0);
+
+            if(isNameValid)
+            {
+                if(_intent == null) //new
+                {
+                    btnOk.Enabled = (CapturedGesture != null);
+                }
+                else //edit
+                {
+                    if(CapturedGesture == null)
+                    {
+                        CapturedGesture = _intent.Gesture;
+                        btnOk.Enabled = true;
+                    }else
+                    {
+                        btnOk.Enabled = true;
+                    }
+                }
+            }else
+            {
+                btnOk.Enabled = false;
+            }
+        }
     }
 }

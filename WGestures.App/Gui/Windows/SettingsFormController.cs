@@ -33,22 +33,20 @@ namespace WGestures.App.Gui.Windows
         private Win32MousePathTracker2 _pathTracker;
         private JsonGestureIntentStore _intentStore;
         private CanvasWindowGestureView _gestureView;
+        private GlobalHotKeyManager _hotkeyMgr;
 
         public SettingsFormController(IConfig config, GestureParser parser,
             Win32MousePathTracker2 pathTracker, JsonGestureIntentStore intentStore,
-            CanvasWindowGestureView gestureView)
+            CanvasWindowGestureView gestureView, GlobalHotKeyManager hotkeyMgr)
         {
-
             _config = config;
             _parser = parser;
             _pathTracker = pathTracker;
             _intentStore = intentStore;
             _gestureView = gestureView;
+            _hotkeyMgr = hotkeyMgr;
 
             #region 初始化支持的命令和命令视图
-            SupportedCommands = new Dictionary<string, Type>();
-            CommandViewFactory = new CommandViewFactory<CommandViewUserControl>() { EnableCaching = false };
-
             //Add Command Types
             SupportedCommands.Add(NamedAttribute.GetNameOf(typeof(DoNothingCommand)), typeof(DoNothingCommand));
             SupportedCommands.Add(NamedAttribute.GetNameOf(typeof(HotKeyCommand)), typeof(HotKeyCommand));
@@ -59,12 +57,11 @@ namespace WGestures.App.Gui.Windows
             SupportedCommands.Add(NamedAttribute.GetNameOf(typeof(SendTextCommand)), typeof(SendTextCommand));
             SupportedCommands.Add(NamedAttribute.GetNameOf(typeof(GotoUrlCommand)), typeof(GotoUrlCommand));
             SupportedCommands.Add(NamedAttribute.GetNameOf(typeof(CmdCommand)), typeof(CmdCommand));
+            SupportedCommands.Add(NamedAttribute.GetNameOf(typeof(ScriptCommand)), typeof(ScriptCommand));
 
             SupportedCommands.Add(NamedAttribute.GetNameOf(typeof(PauseWGesturesCommand)), typeof(PauseWGesturesCommand));
             SupportedCommands.Add(NamedAttribute.GetNameOf(typeof(ChangeAudioVolumeCommand)), typeof(ChangeAudioVolumeCommand));
-
-
-
+            
             CommandViewFactory.Register<OpenFileCommand, OpenFileCommandView>();
             CommandViewFactory.Register<DoNothingCommand, GeneralNoParameterCommandView>();
             CommandViewFactory.Register<HotKeyCommand, HotKeyCommandView>();
@@ -75,11 +72,18 @@ namespace WGestures.App.Gui.Windows
             CommandViewFactory.Register<CmdCommand, CmdCommandView>();
             CommandViewFactory.Register<SendTextCommand, SendTextCommandView>();
             CommandViewFactory.Register<TaskSwitcherCommand, TaskSwitcherCommandView>();
-
+            CommandViewFactory.Register<ScriptCommand, ScriptCommandView>();
             CommandViewFactory.Register<ChangeAudioVolumeCommand, GeneralNoParameterCommandView>();
+            #endregion
 
+            #region Hotcorner 
+            SupportedHotCornerCommands.Add(NamedAttribute.GetNameOf(typeof(DoNothingCommand)), typeof(DoNothingCommand));
+            SupportedHotCornerCommands.Add(NamedAttribute.GetNameOf(typeof(HotKeyCommand)), typeof(HotKeyCommand));
+            SupportedHotCornerCommands.Add(NamedAttribute.GetNameOf(typeof(CmdCommand)), typeof(CmdCommand));
 
-
+            HotCornerCommandViewFactory.Register<DoNothingCommand, GeneralNoParameterCommandView>();
+            HotCornerCommandViewFactory.Register<HotKeyCommand, HotKeyCommandView>();
+            HotCornerCommandViewFactory.Register<CmdCommand, CmdCommandView>();
             #endregion
 
             _form = new SettingsForm(this);
@@ -87,8 +91,36 @@ namespace WGestures.App.Gui.Windows
 
 
         #region tab1 Config Items
-
+        
         public IConfig Config { get { return _config; } }
+
+        public GlobalHotKeyManager.HotKey? PauseResumeHotkey
+        {
+            get
+            {
+                return _hotkeyMgr.GetRegisteredHotKeyById(ConfigKeys.PauseResumeHotKey);
+            }
+
+            set
+            {
+
+                if(value != null)
+                {
+                    if (PauseResumeHotkey != null && value.Value.Equals(PauseResumeHotkey.Value) ) return;
+                    //use null action here cus we use _hotkeyMgr.HotKeyPreview event in Program class
+                    _hotkeyMgr.RegisterHotKey(ConfigKeys.PauseResumeHotKey, value.Value, null);
+                }else
+                {
+                    if (PauseResumeHotkey == null) return;
+                    _hotkeyMgr.UnRegisterHotKey(ConfigKeys.PauseResumeHotKey);
+                }
+
+                _config.Set(ConfigKeys.PauseResumeHotKey, value == null ?  new byte[0] : value.Value.ToBytes());
+
+                OnPropertyChanged("PauseResumeHotKey");
+            }
+        }
+
         /// <summary>
         /// 获取或设置是否开机自动运行
         /// </summary>
@@ -139,41 +171,35 @@ namespace WGestures.App.Gui.Windows
         /// <summary>
         /// 获取或设置哪一个鼠标按键作为手势键
         /// </summary>
-        public string PathTrackerTriggerButton
+        public GestureTriggerButton PathTrackerTriggerButton
         {
             get
             {
-                switch (_pathTracker.TriggerButton)
-                {
-                    case Win32MousePathTracker2.GestureTriggerButton.Middle:
-                        return "中键";
-                    case Win32MousePathTracker2.GestureTriggerButton.Right:
-                        return Native.IsMouseButtonSwapped() ? "左键" : "右键";
-                    case Win32MousePathTracker2.GestureTriggerButton.Middle | Win32MousePathTracker2.GestureTriggerButton.Right:
-                        return (Native.IsMouseButtonSwapped() ? "左键" : "右键") + "和中键";
-                }
-                throw new InvalidOperationException("wtf？ 怎么会到这里?");
+                return _pathTracker.TriggerButton;
             }
 
             set
             {
                 if (value == PathTrackerTriggerButton) return;
-                if (value.Contains("左键") || value.Contains("右键"))
-                {
-                    _pathTracker.TriggerButton = Win32MousePathTracker2.GestureTriggerButton.Right;
-                    if (value.Contains("中键"))
-                    {
-                        _pathTracker.TriggerButton |= Win32MousePathTracker2.GestureTriggerButton.Middle;
-                    }
-                }
-                else
-                {
-                    _pathTracker.TriggerButton = Win32MousePathTracker2.GestureTriggerButton.Middle;
-                }
+                _pathTracker.TriggerButton = value;
 
                 _config.Set(ConfigKeys.PathTrackerTriggerButton, (int)_pathTracker.TriggerButton);
 
                 OnPropertyChanged("PathTrackerTriggerButton");
+            }
+        }
+
+        public bool PathTrackerEnableWinKeyGesturing
+        {
+            get { return _pathTracker.EnableWindowsKeyGesturing; }
+            set
+            {
+                Debug.WriteLine("Win: " + value);
+                if (value == PathTrackerEnableWinKeyGesturing) return;
+                _pathTracker.EnableWindowsKeyGesturing = value;
+
+                _config.Set(ConfigKeys.EnableWindowsKeyGesturing, value);
+                OnPropertyChanged("PathTrackerEnableWinKeyGesturing");
             }
         }
 
@@ -390,6 +416,20 @@ namespace WGestures.App.Gui.Windows
                 OnPropertyChanged("GestureViewMiddleBtnMainColor");
             }
         }
+
+        public Color GestureVieXBtnMainColor
+        {
+            get { return _gestureView.PathXBtnMainColor; }
+            set
+            {
+                if (value == GestureVieXBtnMainColor) return;
+
+                _gestureView.PathXBtnMainColor = value;
+                _config.Set(ConfigKeys.GestureViewXBtnPathColor, value.ToArgb());
+
+                OnPropertyChanged("GestureVieXBtnMainColor");
+            }
+        }
         #endregion
 
         #region migrate methods
@@ -397,6 +437,12 @@ namespace WGestures.App.Gui.Windows
         internal void ExportTo(string filePath)
         {
             MigrateService.ExportTo(filePath);
+        }
+
+        internal void RestoreDefaultGestures()
+        {
+            _intentStore.Import(MigrateService.Import(AppSettings.DefaultGesturesFilePath).GestureIntentStore, replace: true);
+            OnPropertyChanged("IntentStore");
         }
 
         internal void Import(ConfigAndGestures configAndGestures, bool importConfig, bool importGestures, bool mergeGestures)
@@ -450,11 +496,11 @@ namespace WGestures.App.Gui.Windows
         /// <summary>
         /// 获取支持的命令类型字典
         /// </summary>
-        public Dictionary<string, Type> SupportedCommands { get; private set; }
+        public Dictionary<string, Type> SupportedCommands { get; private set; } = new Dictionary<string, Type>();
         /// <summary>
         /// 获取命令视图工厂
         /// </summary>
-        public ICommandViewFactory<CommandViewUserControl> CommandViewFactory { get; private set; }
+        public ICommandViewFactory<CommandViewUserControl> CommandViewFactory { get; private set; } = new CommandViewFactory<CommandViewUserControl>() { EnableCaching = false };
         /// <summary>
         /// 获取内存中的手示意图存储结构
         /// </summary>
@@ -469,7 +515,9 @@ namespace WGestures.App.Gui.Windows
 
         #endregion
 
-        #region hotcorners
+        #region hotcorners & edges
+        public Dictionary<string, Type> SupportedHotCornerCommands { get; private set; } = new Dictionary<string, Type>();
+        public ICommandViewFactory<CommandViewUserControl> HotCornerCommandViewFactory { get; private set; } = new CommandViewFactory<CommandViewUserControl>() { EnableCaching = false };
 
         public bool GestureParserEnableHotCorners
         {
@@ -482,6 +530,19 @@ namespace WGestures.App.Gui.Windows
                 OnPropertyChanged("GestureParserEnableHotCorners");
             }
         }
+
+        public bool GestureParserEnableRubEdges
+        {
+            get { return _parser.EnableRubEdge; }
+            set
+            {
+                if (value == _parser.EnableRubEdge) return;
+                _parser.EnableRubEdge = value;
+                Config.Set(ConfigKeys.GestureParserEnableRubEdges, value);
+                OnPropertyChanged("GestureParserEnableRubEdges");
+            }
+        }
+
         #endregion
         /// <summary>
         /// 以Modal方式呈现主设置窗口
@@ -493,10 +554,10 @@ namespace WGestures.App.Gui.Windows
             _config.Save();
             _intentStore.Save();
 
-            /*using (var proc = Process.GetCurrentProcess())
+            using (var proc = Process.GetCurrentProcess())
             {
                 Native.SetProcessWorkingSetSize(proc.Handle, -1, -1);
-            }*/
+            }
             GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
             GC.WaitForPendingFinalizers();
 
